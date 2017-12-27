@@ -1,0 +1,11 @@
+{
+  "name": "interlinked-neural-network",
+  "version": "1.0.0",
+  "description": "An open source neural network concept",
+  "main": "bot.js",
+  "author": "Alex Baldwin",
+  "dependencies": {
+    "got": "^8.0.1",
+    "sigmoid": "0.0.1"
+  }
+}
