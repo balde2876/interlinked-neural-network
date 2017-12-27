@@ -69,7 +69,9 @@ fs.readFileSync(nodesFile, function (err, data) {
     if (err) {
         console.log("[ WARNING  ] Could not find nodes file");
         console.log("[ WARNING  ] Are permissions for the file set correctly?");
-        nodes = Array.apply(null, Array(53)).map(Number.prototype.valueOf,0);
+        for (i=0;i<53;i++) {
+            newNode(8);
+        }
     } else {
         nodes = JSON.parse(data.toString());
     }
@@ -86,7 +88,9 @@ fs.readFileSync(connectionsFile, function (err, data) {
 } catch (ex) {
     console.log("[ WARNING  ] Could not find connections/nodes file");
     console.log("[ WARNING  ] Using defaults");
-    nodes = Array.apply(null, Array(53)).map(Number.prototype.valueOf,0);
+    for (i=0;i<53;i++) {
+        newNode(8);
+    }
     connections = [];
 }
 
@@ -99,23 +103,23 @@ function getRandomInt(min, max) {
 }
 
 function newConnection(mmax) {
-    var inputNode = getRandomInt(26, nodes.length);
-    var outputNode = getRandomInt(26, nodes.length);
-    if (inputNode < 53) {
-        inputNode = inputNode - 27
-    }
+    var inputNode = getRandomInt(0, nodes.length - 1);
+    var outputNode = getRandomInt(0, nodes.length - 1);
     var weight = (Math.random() * mmax * 2) - mmax;
-    connections.push([inputNode,outputNode,weight])
+    if (nodes[outputNode][1] != 1) {
+        connections.push([inputNode,outputNode,weight])
+    }
 }
 
-function newNode(mmax) {
+function newNode(mmax,type = 0) {
     var val = sigmoid((Math.random() * mmax * 2) - mmax);
-    nodes.push(val)
+    nodes.push([val,type]) // 0 for normal, 1 for read only, 2 for memory cell, 3 for long term memory cell
 }
 
 function modifyConnections(mmax) {
     for (i=0;i<connections.length;i++) {
-        connections[i][2] = (connections[i][2] + getRandomInt(-mmax, mmax)) / 2;
+        var prop1 = 4; // CONTROLS RANDOMNESS
+        connections[i][2] = ((connections[i][2] * (prop1 - 1)) + getRandomInt(-mmax, mmax)) / prop1;
     }
     for (i=0;i<connections.length;i++) {
         connections[i][2] = connections[i][2] * (sigmoid(mood) * 2);
@@ -132,14 +136,23 @@ function modifyConnections(mmax) {
                 validConnection = true;
             }
         }
-        if (isNaN(nodes[i])) {
-            nodes[i] = sigmoid((Math.random() * 8 * 2) - 8);
+        if (isNaN(nodes[i][0])) {
+            try {
+                nodes[i][0] = sigmoid((Math.random() * 8 * 2) - 8);
+            } catch (ex) {
+                nodes[i] = [sigmoid((Math.random() * 8 * 2) - 8), 0];
+            }
         }
         if (!validConnection) {
             nodes.splice(i, 1);
             for (j=0;j<connections.length;j++) {
-                if ((Math.abs(connections[j][0]) >= i) || (Math.abs(connections[j][1]) >= i)) {
+                if ((connections[j][0] == i) || (connections[j][1] == i)) {
                     connections.splice(j, 1);
+                }
+                if (connections[j][0] > i){
+                    connections[j][0] = connections[j][0] - 1;
+                } else if (connections[j][1] > i) {
+                    connections[j][1] = connections[j][1] - 1;
                 }
             }
         }
@@ -147,12 +160,46 @@ function modifyConnections(mmax) {
 }
 
 function nodeStep() {
-    var newNodes = Array.apply(null, Array(nodes.length)).map(Number.prototype.valueOf,0);
+    var newNodes = [];
+    for (i=0;i<nodes.length;i++) {
+        if (nodes[i][1] == 0) {
+            newNodes.push([0,0]);
+        }
+        if (nodes[i][1] == 1) {
+            newNodes.push([0,1]);
+        }
+        if (nodes[i][1] == 2) {
+            newNodes.push([sigmoid(nodes[i][0]),2]);
+        }
+        if (nodes[i][1] == 3) {
+            newNodes.push([nodes[i][0],3]);
+        }
+    }
+    //console.log(newNodes)
     for (i=0;i<connections.length;i++) {
-        newNodes[connections[i][1]] = newNodes[connections[i][1]] + (nodes[connections[i][0]] * connections[i][2]);
+        try {
+            newNodes[connections[i][1]][0] = newNodes[connections[i][1]][0] + (nodes[connections[i][0]][0] * connections[i][2]);
+        } catch (ex) {
+            console.log("[   INFO   ] Invalid Node " + i);
+            nodes.splice(i, 1);
+            for (j=0;j<connections.length;j++) {
+                if ((connections[j][0] == i) || (connections[j][1] == i)) {
+                    connections.splice(j, 1);
+                }
+                if (connections[j][0] > i){
+                    connections[j][0] = connections[j][0] - 1;
+                } else if (connections[j][1] > i) {
+                    connections[j][1] = connections[j][1] - 1;
+                }
+            }
+        }
     }
     for (i=0;i<newNodes.length;i++) {
-        nodes[i] = sigmoid(newNodes[i]);
+        try {
+            nodes[i][0] = sigmoid(newNodes[i][0]);
+        } catch (ex) {
+            nodes[i] = [sigmoid((Math.random() * 8 * 2) - 8), 0];
+        }
     }
 
     //console.log(nodes)
@@ -160,9 +207,13 @@ function nodeStep() {
     var highestId = 0;
     var highestValue = 0; //BARRIER TO ENTRY
     for (i=26;i<53;i++) {
-        if (nodes[i] > highestValue) {
-            highestId = i-26;
-            highestValue = nodes[i];
+        try {
+            if (nodes[i][0] > highestValue) {
+                highestId = i-26;
+                highestValue = nodes[i][0];
+            }
+        } catch (ex) {
+
         }
     }
     output = output + " ABCDEFGHIJKLMNOPQRSTUVWXYZ\n".charAt(highestId);
@@ -176,7 +227,7 @@ function nodeStep() {
             if (output.toUpperCase().includes(" " + targets[i].toUpperCase() + " ")) {
                 console.log(output);
                 console.log("[   INFO   ] WORD HIT");
-                mood = mood + ((32 * Math.pow(targets[i].length,2)) / output.length);
+                mood = mood + (8 * ((64 * Math.pow(targets[i].length,3)) / Math.pow(output.length,2)));
                 console.log(mood)
             }
         }
@@ -230,12 +281,12 @@ function networkStep() {
     for (i=0;i<2;i++) {
         newNode(8);
     }
-    for (i=0;i<4;i++) {
+    for (i=0;i<1;i++) {
         newConnection(8);
     }
 
     //mood = mood - 0.01
-    mood = mood * 0.99; // Mood decay
+    mood = mood * (1- Math.pow(2,-8)); // Mood decay
 
     loops = loops + 1;
     if (loops > Math.pow(2,13)) {
